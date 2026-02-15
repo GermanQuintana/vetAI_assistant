@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VetAI Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#0f1117;--bgCard:#181b24;--bgInput:#12141c;--border:#2a2e3b;--text:#e8eaed;--textMuted:#8b8fa3;--accent:#0d9488;--accentBg:rgba(13,148,136,.1);--danger:#ef4444;--warning:#f59e0b;--success:#22c55e}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:32px 24px}
+  h1{font-size:26px;font-weight:700;margin-bottom:8px}
+  .card{background:var(--bgCard);border-radius:16px;border:1px solid var(--border);padding:24px;margin-bottom:20px}
+  .input{width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bgInput);color:var(--text);font-size:14px;font-family:inherit;margin-bottom:12px}
+  .input:focus{outline:none;border-color:var(--accent)}
+  .btn{padding:10px 20px;border-radius:10px;border:none;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .2s}
+  .btn:hover{filter:brightness(1.1)}
+  .btn-primary{background:var(--accent);color:#fff}
+  .btn-sm{padding:6px 14px;font-size:12px;border-radius:8px}
+  .btn-danger{background:var(--danger);color:#fff}
+  table{width:100%;border-collapse:collapse}
+  th{text-align:left;color:var(--textMuted);font-size:12px;font-weight:600;padding:10px 12px;border-bottom:1px solid var(--border)}
+  td{padding:10px 12px;font-size:13px;border-bottom:1px solid var(--border)}
+  .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700}
+  .bar{height:6px;border-radius:3px;background:var(--border);width:100px;display:inline-block;vertical-align:middle;margin-left:8px}
+  .bar-fill{height:100%;border-radius:3px}
+  #log{background:var(--bgInput);border-radius:10px;padding:16px;font-size:12px;color:var(--textMuted);max-height:200px;overflow-y:auto;font-family:monospace;white-space:pre-wrap}
+  label{display:block;color:var(--textMuted);font-size:12px;font-weight:500;margin-bottom:4px}
+  select{background:var(--bgInput);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:14px;font-family:inherit;width:100%;margin-bottom:12px}
+  .stat{text-align:center;padding:16px}
+  .stat-num{font-size:28px;font-weight:700}
+  .stat-label{color:var(--textMuted);font-size:12px;margin-top:4px}
+</style>
+</head>
+<body>
+<div style="max-width:1000px;margin:0 auto">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:32px">
+    <div>
+      <h1>🐾 VetAI Admin</h1>
+      <p style="color:var(--textMuted);font-size:14px">Panel de administración</p>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center" id="authArea">
+      <input class="input" style="width:250px;margin:0" type="password" id="adminPass" placeholder="Contraseña admin" onkeydown="if(event.key==='Enter')loadDashboard()">
+      <button class="btn btn-primary" onclick="loadDashboard()">Entrar</button>
+    </div>
+  </div>
+
+  <div id="content" style="display:none">
+    <!-- Stats -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px;margin-bottom:24px" id="stats"></div>
+
+    <!-- Clinics Table -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <h2 style="font-size:18px;font-weight:700">Clínicas</h2>
+        <button class="btn btn-primary btn-sm" onclick="showNewClinic()">+ Nueva clínica</button>
+      </div>
+      <div style="overflow-x:auto">
+        <table id="clinicsTable"><thead><tr><th>Clínica</th><th>Plan</th><th>Consumo mes</th><th>Límite</th><th>Estado</th><th>Acciones</th></tr></thead><tbody></tbody></table>
+      </div>
+    </div>
+
+    <!-- New Clinic Form -->
+    <div class="card" id="newClinicForm" style="display:none">
+      <h2 style="font-size:18px;font-weight:700;margin-bottom:16px">➕ Nueva Clínica</h2>
+      <label>Nombre de la clínica *</label>
+      <input class="input" id="nc_name" placeholder="Clínica Veterinaria Las Palmas">
+      <label>Email de contacto</label>
+      <input class="input" id="nc_contact" placeholder="info@clinica.com">
+      <label>Plan</label>
+      <select id="nc_plan"><option value="basic">Básico</option><option value="pro" selected>Profesional</option><option value="premium">Premium</option></select>
+      <label>Límite mensual (USD)</label>
+      <input class="input" type="number" id="nc_limit" value="50" placeholder="50">
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" onclick="createClinic()">Crear clínica</button>
+        <button class="btn" style="background:var(--border);color:var(--text)" onclick="document.getElementById('newClinicForm').style.display='none'">Cancelar</button>
+      </div>
+    </div>
+
+    <!-- Token display -->
+    <div class="card" id="tokenDisplay" style="display:none;border-color:var(--success)">
+      <h2 style="font-size:18px;font-weight:700;color:var(--success);margin-bottom:12px">✅ Clínica creada</h2>
+      <p style="color:var(--textMuted);font-size:13px;margin-bottom:12px">Dale este token a la clínica para que pueda usar la app. ¡Guárdalo, no se puede recuperar!</p>
+      <div style="background:var(--bgInput);border-radius:10px;padding:16px;font-family:monospace;font-size:14px;word-break:break-all" id="tokenText"></div>
+      <button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="navigator.clipboard?.writeText(document.getElementById('tokenText').textContent);this.textContent='✓ Copiado'">📋 Copiar token</button>
+    </div>
+
+    <!-- Log -->
+    <div class="card">
+      <h2 style="font-size:18px;font-weight:700;margin-bottom:12px">📊 Log de actividad</h2>
+      <div id="log">Cargando...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = window.location.origin;
+let PASS = "";
+
+async function adminFetch(path){
+  const r = await fetch(API + path, {headers:{"x-admin-password":PASS}});
+  const d = await r.json();
+  if(!r.ok) throw new Error(d.error);
+  return d;
+}
+
+async function loadDashboard(){
+  PASS = document.getElementById("adminPass").value;
+  try{
+    const d = await adminFetch("/api/admin/dashboard");
+    document.getElementById("content").style.display = "block";
+    document.getElementById("authArea").innerHTML = `<span style="color:var(--success);font-size:13px">✅ Conectado</span>`;
+
+    // Stats
+    document.getElementById("stats").innerHTML = [
+      {n:d.total_clinics,l:"Clínicas"},
+      {n:d.active_clinics,l:"Activas"},
+      {n:d.total_requests_this_month,l:"Peticiones mes"},
+      {n:"$"+d.total_cost_this_month,l:"Coste total mes"}
+    ].map(s=>`<div class="card stat"><div class="stat-num">${s.n}</div><div class="stat-label">${s.l}</div></div>`).join('');
+
+    // Clinics table
+    const tbody = document.querySelector("#clinicsTable tbody");
+    tbody.innerHTML = d.clinics.map(c=>{
+      const pct = c.limit>0?Math.min(100,c.percent):0;
+      const color = pct>90?'var(--danger)':pct>70?'var(--warning)':'var(--accent)';
+      return `<tr>
+        <td><strong>${c.name}</strong></td>
+        <td><span class="badge" style="background:${c.plan==='premium'?'#7c3aed':c.plan==='pro'?'var(--accent)':'var(--border)'};color:#fff">${c.plan}</span></td>
+        <td>$${c.used} <div class="bar"><div class="bar-fill" style="width:${pct}%;background:${color}"></div></div></td>
+        <td>$${c.limit}/mes</td>
+        <td style="color:${c.active?'var(--success)':'var(--danger)'}">${c.active?'✅ Activa':'⛔ Desactivada'}</td>
+        <td>
+          <button class="btn btn-sm" style="background:var(--accentBg);color:var(--accent);border:1px solid rgba(13,148,136,.3)" onclick="viewUsage('${c.id}')">📊 Uso</button>
+          <button class="btn btn-sm" style="background:${c.active?'rgba(239,68,68,.1)':'rgba(34,197,94,.1)'};color:${c.active?'var(--danger)':'var(--success)'};border:1px solid ${c.active?'rgba(239,68,68,.3)':'rgba(34,197,94,.3)'}" onclick="toggleClinic('${c.id}',${!c.active})">${c.active?'⛔ Desactivar':'✅ Activar'}</button>
+        </td>
+      </tr>`;
+    }).join('');
+
+    // Recent activity
+    const allLogs = await adminFetch("/api/admin/clinics");
+    document.getElementById("log").textContent = "Dashboard cargado · " + d.total_requests_this_month + " peticiones este mes · Coste total: $" + d.total_cost_this_month;
+
+  }catch(e){
+    alert("Error: " + e.message);
+  }
+}
+
+function showNewClinic(){
+  document.getElementById("newClinicForm").style.display = "block";
+  document.getElementById("tokenDisplay").style.display = "none";
+}
+
+async function createClinic(){
+  const name = document.getElementById("nc_name").value.trim();
+  if(!name){alert("Nombre requerido");return}
+  try{
+    const d = await fetch(API+"/api/admin/clinics",{
+      method:"POST",
+      headers:{"Content-Type":"application/json","x-admin-password":PASS},
+      body:JSON.stringify({
+        name,
+        contact: document.getElementById("nc_contact").value,
+        plan: document.getElementById("nc_plan").value,
+        monthly_limit_usd: parseFloat(document.getElementById("nc_limit").value)||50
+      })
+    }).then(r=>r.json());
+
+    if(d.error) throw new Error(d.error);
+
+    document.getElementById("newClinicForm").style.display = "none";
+    document.getElementById("tokenDisplay").style.display = "block";
+    document.getElementById("tokenText").textContent = d.token;
+    loadDashboard();
+  }catch(e){alert("Error: "+e.message)}
+}
+
+async function toggleClinic(id, active){
+  if(!confirm(active?"¿Activar esta clínica?":"¿Desactivar esta clínica? No podrán usar la app."))return;
+  await fetch(API+"/api/admin/clinics/"+id,{
+    method:"PUT",
+    headers:{"Content-Type":"application/json","x-admin-password":PASS},
+    body:JSON.stringify({active})
+  });
+  loadDashboard();
+}
+
+async function viewUsage(id){
+  try{
+    const d = await adminFetch("/api/admin/clinics/"+id+"/usage");
+    let msg = `📊 ${d.clinic} — ${d.month}\n\nPeticiones: ${d.total_requests}\nCoste: $${d.total_cost_usd} / $${d.limit_usd}\n\nPor modelo:\n`;
+    for(const [model,info] of Object.entries(d.by_model||{})){
+      msg += `  ${model}: ${info.count} peticiones, $${info.cost.toFixed(4)}, ${info.tokens} tokens\n`;
+    }
+    if(d.recent?.length){
+      msg += "\nÚltimas peticiones:\n";
+      d.recent.slice(0,10).forEach(r=>{
+        msg += `  ${r.timestamp.substring(11,16)} | ${r.model.split('/')[1]} | ${r.prompt_type} | $${(r.cost_usd||0).toFixed(5)}\n`;
+      });
+    }
+    document.getElementById("log").textContent = msg;
+  }catch(e){alert("Error: "+e.message)}
+}
+</script>
+</body>
+</html>

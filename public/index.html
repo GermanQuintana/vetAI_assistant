@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VetAI Assistant</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#0f1117;--bgCard:#181b24;--bgInput:#12141c;
+    --border:#2a2e3b;--borderFocus:#0d9488;
+    --text:#e8eaed;--textMuted:#8b8fa3;--textDim:#565b6e;
+    --accent:#0d9488;--accentLight:#14b8a6;--accentBg:rgba(13,148,136,0.1);
+    --danger:#ef4444;--success:#22c55e;--warning:#f59e0b;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+  button{font-family:inherit;cursor:pointer;transition:all 0.2s}
+  button:hover{filter:brightness(1.12)}
+  textarea,input{font-family:inherit;transition:border 0.2s}
+  textarea:focus,input:focus{outline:none;border-color:var(--borderFocus)!important}
+  ::-webkit-scrollbar{width:6px}
+  ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:5}}
+  .fade-in{animation:fadeIn .4s ease}
+  .input-field{width:100%;padding:11px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bgInput);color:var(--text);font-size:14px}
+  .text-area{width:100%;padding:16px;border-radius:12px;border:1px solid var(--border);background:var(--bgInput);color:var(--text);font-size:14px;line-height:1.6;resize:vertical}
+  .pill{border-radius:10px;padding:10px 18px;border:none;font-size:13px;font-weight:500;color:#fff}
+  .card{background:var(--bgCard);border-radius:16px;border:1px solid var(--border)}
+  .tool-card{background:var(--bgCard);border-radius:16px;padding:24px;border:1px solid var(--border);cursor:pointer;text-align:left}
+  .tool-card:hover{border-color:var(--accent);background:#1e2230}
+  .drop-zone{border:2px dashed var(--border);border-radius:14px;padding:32px;text-align:center;cursor:pointer}
+  .drop-zone:hover{border-color:var(--accent)}
+  .rbtn{border-radius:10px;padding:10px 18px;font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--border);background:var(--bgCard);color:var(--text)}
+  .rbtn.on{background:var(--accentBg);border-color:var(--accent);color:var(--accent)}
+  .main-btn{width:100%;padding:14px 0;border-radius:10px;border:none;background:linear-gradient(135deg,var(--accent),var(--accentLight));color:#fff;font-size:15px;font-weight:600}
+  .main-btn:disabled{opacity:.6;cursor:not-allowed}
+  .hbtn{background:none;border:1px solid var(--border);border-radius:8px;padding:6px 14px;color:var(--textMuted);font-size:12px;font-weight:500;display:flex;align-items:center;gap:6px}
+  .usage-bar{height:6px;border-radius:3px;background:var(--border);overflow:hidden;margin-top:6px}
+  .usage-fill{height:100%;border-radius:3px;transition:width .3s}
+  header{background:var(--bgCard);border-bottom:1px solid var(--border);padding:12px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+  main{max-width:1000px;margin:0 auto;padding:32px 24px}
+  .fw{display:flex;gap:10px;flex-wrap:wrap}
+  .toast{position:fixed;bottom:24px;right:24px;padding:12px 20px;border-radius:10px;font-size:14px;font-weight:500;z-index:999;animation:fadeIn .3s ease;color:#fff}
+  .img-thumb{width:80px;height:80px;object-fit:cover;border-radius:10px;border:1px solid var(--border)}
+  select{background:var(--bgInput);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px;font-family:inherit}
+  select:focus{border-color:var(--accent);outline:none}
+  @media(max-width:600px){header{padding:10px 14px;flex-wrap:wrap;gap:8px}main{padding:20px 14px}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+// ═══════════════════════════════════════════════
+// VetAI Assistant — Frontend para Clínicas
+// ═══════════════════════════════════════════════
+
+// ── CONFIG ──
+// Cambia esto a la URL de tu servidor cuando lo despliegues
+const API_BASE = window.location.origin;
+
+const REPORT_TYPES = [
+  {id:"clinical",name:"Informe Clínico",icon:"📋"},
+  {id:"radiology",name:"Informe Radiológico",icon:"🩻"},
+  {id:"insurance",name:"Para Aseguradora",icon:"🏥"},
+  {id:"referral",name:"Centro de Referencia",icon:"🔬"},
+  {id:"second_opinion",name:"Segunda Opinión",icon:"🩺"},
+];
+const AUDIENCE_TYPES = [
+  {id:"insurance",label:"🏥 Aseguradora"},
+  {id:"referral",label:"🔬 Centro referencia"},
+  {id:"second_opinion",label:"🩺 Segunda opinión"},
+  {id:"summary",label:"📋 Resumen clínico"},
+];
+
+// ── STATE ──
+let savedToken = null;
+try { savedToken = localStorage.getItem("vetai_token"); } catch(e){}
+
+let S = {
+  page: savedToken ? "loading" : "login",
+  token: savedToken || "",
+  clinic: null,
+  models: [],
+  selectedModel: "",
+  activeTool: null,
+  toast: null,
+  // tool states
+  transcript:"", recording:false, reportType:null, result:"", loading:false,
+  images:[], imgCtx:"", imgAnalysis:"", imgRptType:null, imgRpt:"", imgRptLoading:false,
+  hFiles:[], hText:"", hAud:null, hResult:"",
+  rText:"", rType:null, rResult:"",
+};
+
+let recognition = null;
+const app = document.getElementById("app");
+
+function set(p){Object.assign(S,p);render()}
+function toast(msg,type="info"){S.toast={msg,type};render();setTimeout(()=>{S.toast=null;render()},4000)}
+
+// ── API CALLS ──
+async function api(method, path, body) {
+  const opts = {
+    method,
+    headers: { "Content-Type":"application/json", "x-clinic-token": S.token }
+  };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(API_BASE + path, opts);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Error del servidor");
+  return data;
+}
+
+async function generate(promptType, userContent, customInstruction) {
+  return api("POST", "/api/generate", {
+    model: S.selectedModel,
+    prompt_type: promptType,
+    user_content: userContent,
+    custom_instruction: customInstruction || null
+  });
+}
+
+// ── INIT: Check token on load ──
+async function initApp() {
+  if (!S.token) { set({page:"login"}); return; }
+  try {
+    const data = await api("GET", "/api/clinic/status");
+    S.clinic = data;
+    S.models = data.models || [];
+    S.selectedModel = data.models?.[0]?.id || "";
+    set({page:"dashboard"});
+  } catch(e) {
+    try{localStorage.removeItem("vetai_token")}catch(x){}
+    S.token = "";
+    set({page:"login"});
+    toast("Token inválido o servidor no disponible","error");
+  }
+}
+
+// ── SPEECH ──
+function startRec(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){toast("Usa Chrome para dictado por voz","error");return}
+  recognition=new SR();recognition.lang="es-ES";recognition.continuous=true;recognition.interimResults=true;
+  let final=S.transcript;
+  recognition.onresult=(e)=>{let interim="";for(let i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal)final+=e.results[i][0].transcript+" ";else interim+=e.results[i][0].transcript}set({transcript:final+interim})};
+  recognition.onerror=(e)=>{toast("Error voz: "+e.error,"error");set({recording:false})};
+  recognition.onend=()=>set({recording:false});
+  recognition.start();set({recording:true});
+}
+function stopRec(){if(recognition)recognition.stop();set({recording:false})}
+
+// ── FILE HELPERS ──
+function readURL(f){return new Promise(r=>{const x=new FileReader();x.onload=e=>r(e.target.result);x.readAsDataURL(f)})}
+function readText(f){return new Promise(r=>{const x=new FileReader();x.onload=e=>r(e.target.result);x.readAsText(f)})}
+
+// ── RENDER ──
+function render(){
+  if(S.page==="login")return renderLogin();
+  if(S.page==="loading")return app.innerHTML=`<div style="min-height:100vh;display:flex;align-items:center;justify-content:center"><div class="fade-in" style="text-align:center"><div style="font-size:48px;margin-bottom:16px">🐾</div><div style="color:var(--textMuted)">Conectando...</div></div></div>`;
+  renderDashboard();
+}
+
+// ── LOGIN ──
+function renderLogin(){
+  app.innerHTML=`
+  <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--bg) 0%,#141824 50%,#0c1a1a 100%);padding:20px">
+    <div style="width:100%;max-width:420px" class="fade-in">
+      <div style="text-align:center;margin-bottom:40px">
+        <div style="font-size:48px;margin-bottom:8px">🐾</div>
+        <h1 style="font-size:28px;font-weight:700">VetAI Assistant</h1>
+        <p style="color:var(--textMuted);margin-top:8px;font-size:14px">Asistente clínico veterinario con IA</p>
+      </div>
+      <div class="card" style="padding:32px">
+        <p style="color:var(--textMuted);font-size:13px;margin-bottom:20px">Introduce el token que te proporcionó tu administrador de VetAI.</p>
+        <label style="display:block;color:var(--textMuted);font-size:12px;font-weight:500;margin-bottom:6px">Token de clínica</label>
+        <input class="input-field" type="password" placeholder="vetai-xxxxxxxx-xxxx-..." id="tokenInput" value="${esc(S.token)}" onkeydown="if(event.key==='Enter')doLogin()">
+        <button class="main-btn" style="margin-top:16px" onclick="doLogin()">Entrar</button>
+      </div>
+    </div>
+    ${S.toast?`<div class="toast" style="background:${S.toast.type==='error'?'var(--danger)':'var(--accent)'}">${esc(S.toast.msg)}</div>`:''}
+  </div>`;
+}
+
+async function doLogin(){
+  const t=document.getElementById("tokenInput")?.value?.trim();
+  if(!t){toast("Introduce el token","error");return}
+  S.token=t;
+  try{localStorage.setItem("vetai_token",t)}catch(e){}
+  set({page:"loading"});
+  await initApp();
+}
+
+// ── DASHBOARD ──
+function renderDashboard(){
+  const c=S.clinic;
+  if(!c)return;
+  const pct=c.monthly_limit_usd>0?Math.min(100,Math.round(c.used_this_month_usd/c.monthly_limit_usd*100)):0;
+  const barColor=pct>90?'var(--danger)':pct>70?'var(--warning)':'var(--accent)';
+
+  let toolHTML="";
+  if(S.activeTool==="transcribe")toolHTML=renderTranscribe();
+  else if(S.activeTool==="image")toolHTML=renderImage();
+  else if(S.activeTool==="history")toolHTML=renderHistory();
+  else if(S.activeTool==="report")toolHTML=renderReport();
+
+  app.innerHTML=`
+  <header>
+    <div style="display:flex;align-items:center;gap:12px">
+      <span style="font-size:24px">🐾</span>
+      <span style="font-weight:700;font-size:18px">VetAI</span>
+      ${S.activeTool?`<button class="hbtn" style="color:var(--accent);border-color:rgba(13,148,136,.3);background:var(--accentBg)" onclick="set({activeTool:null,result:'',imgAnalysis:'',imgRpt:'',hResult:'',rResult:''})">← Panel</button>`:''}
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <div style="text-align:right">
+        <div style="color:var(--text);font-size:12px;font-weight:600">${esc(c.clinic_name)}</div>
+        <div style="color:var(--textMuted);font-size:11px">$${c.used_this_month_usd} / $${c.monthly_limit_usd} este mes</div>
+        <div class="usage-bar" style="width:120px"><div class="usage-fill" style="width:${pct}%;background:${barColor}"></div></div>
+      </div>
+      <button class="hbtn" style="color:var(--danger)" onclick="try{localStorage.removeItem('vetai_token')}catch(e){};set({token:'',clinic:null,page:'login'})">Salir</button>
+    </div>
+  </header>
+  <main>
+    ${!S.activeTool?`
+      <div class="fade-in">
+        <div style="margin-bottom:32px">
+          <h1 style="font-size:26px;font-weight:700">Hola 👋</h1>
+          <p style="color:var(--textMuted);margin-top:6px;font-size:14px">${esc(c.clinic_name)} · Plan ${esc(c.plan)}</p>
+        </div>
+        <!-- Model selector -->
+        <div class="card" style="padding:16px 20px;margin-bottom:24px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <span style="color:var(--textMuted);font-size:13px">🤖 Modelo activo:</span>
+          <select onchange="S.selectedModel=this.value" style="flex:1;min-width:200px">
+            ${c.models.map(m=>`<option value="${m.id}" ${S.selectedModel===m.id?'selected':''}>${m.name} — ${m.desc} (~$${m.input_per_m}/M in)</option>`).join('')}
+          </select>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px">
+          <button class="tool-card" onclick="set({activeTool:'transcribe'})">
+            <div style="font-size:32px;margin-bottom:12px">🎙️</div>
+            <div style="font-size:15px;font-weight:600;margin-bottom:6px">Transcribir Audio</div>
+            <div style="color:var(--textMuted);font-size:13px">Dicta notas y genera informes</div>
+          </button>
+          <button class="tool-card" onclick="set({activeTool:'image'})">
+            <div style="font-size:32px;margin-bottom:12px">📸</div>
+            <div style="font-size:15px;font-weight:600;margin-bottom:6px">Analizar Imagen</div>
+            <div style="color:var(--textMuted);font-size:13px">Rx, citologías, fotos clínicas</div>
+          </button>
+          <button class="tool-card" onclick="set({activeTool:'history'})">
+            <div style="font-size:32px;margin-bottom:12px">📂</div>
+            <div style="font-size:15px;font-weight:600;margin-bottom:6px">Analizar Historial</div>
+            <div style="color:var(--textMuted);font-size:13px">Historial completo con analíticas</div>
+          </button>
+          <button class="tool-card" onclick="set({activeTool:'report'})">
+            <div style="font-size:32px;margin-bottom:12px">📝</div>
+            <div style="font-size:15px;font-weight:600;margin-bottom:6px">Redactar Informe</div>
+            <div style="color:var(--textMuted);font-size:13px">Notas rápidas a informe formal</div>
+          </button>
+        </div>
+      </div>
+    `:`<div class="fade-in">${modelSelector()}${toolHTML}</div>`}
+  </main>
+  ${S.toast?`<div class="toast" style="background:${S.toast.type==='error'?'var(--danger)':'var(--accent)'}">${esc(S.toast.msg)}</div>`:''}`;
+}
+
+function modelSelector(){
+  const c=S.clinic;
+  return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap">
+    <span style="color:var(--textMuted);font-size:12px">🤖 Modelo:</span>
+    <select onchange="S.selectedModel=this.value" style="min-width:200px">
+      ${c.models.map(m=>`<option value="${m.id}" ${S.selectedModel===m.id?'selected':''}>${m.name}</option>`).join('')}
+    </select>
+    <span style="color:var(--textDim);font-size:11px">$${S.clinic.used_this_month_usd}/$${S.clinic.monthly_limit_usd}</span>
+  </div>`;
+}
+
+// ── TRANSCRIBE ──
+function renderTranscribe(){
+  return `
+    <h2 style="font-size:22px;font-weight:700">🎙️ Transcripción y Dictado</h2>
+    <p style="color:var(--textMuted);margin:6px 0 24px;font-size:14px">Dicta notas clínicas y genera informes profesionales</p>
+    <div class="fw" style="margin-bottom:16px">
+      <button class="pill" style="background:${S.recording?'var(--danger)':'var(--accent)'};${S.recording?'animation:pulse 1.5s infinite':''}" onclick="${S.recording?'stopRec()':'startRec()'}">
+        ${S.recording?'⏹ Detener':'🎤 Iniciar dictado'}</button>
+      ${S.transcript?`<button class="pill" style="background:transparent;border:1px solid var(--border);color:var(--textMuted)" onclick="set({transcript:'',result:'',reportType:null})">🗑 Limpiar</button>`:''}
+    </div>
+    <textarea class="text-area" rows="8" placeholder="Aquí aparecerá la transcripción o escribe directamente..." oninput="S.transcript=this.value">${esc(S.transcript)}</textarea>
+    ${S.transcript?`
+      <h3 style="font-size:15px;font-weight:600;margin:24px 0 12px">Tipo de informe:</h3>
+      <div class="fw" style="margin-bottom:16px">${REPORT_TYPES.map(r=>`<button class="rbtn ${S.reportType===r.id?'on':''}" onclick="set({reportType:'${r.id}'})">${r.icon} ${r.name}</button>`).join('')}</div>
+      <button class="pill" style="background:linear-gradient(135deg,var(--accent),var(--accentLight));padding:12px 28px;font-size:14px;font-weight:600;${S.loading||!S.reportType?'opacity:.6;cursor:not-allowed':''}" onclick="doGenTranscript()" ${S.loading||!S.reportType?'disabled':''}>
+        ${S.loading?'⏳ Generando...':'✨ Generar informe'}</button>
+    `:''}
+    ${S.result?resultBox(S.result):''}`;
+}
+async function doGenTranscript(){
+  if(!S.transcript.trim()||!S.reportType)return;
+  set({loading:true,result:""});
+  try{
+    const r=await generate(S.reportType, "A partir de las siguientes notas del veterinario, genera el informe completo:\n\n"+S.transcript);
+    set({result:r.text,loading:false});
+    refreshStatus();
+  }catch(e){set({result:"❌ "+e.message,loading:false});toast(e.message,"error")}
+}
+
+// ── IMAGE ──
+function renderImage(){
+  return `
+    <h2 style="font-size:22px;font-weight:700">📸 Análisis de Imagen</h2>
+    <p style="color:var(--textMuted);margin:6px 0 24px;font-size:14px">Radiografías, citologías, fotos clínicas</p>
+    <div class="drop-zone" style="margin-bottom:16px" onclick="document.getElementById('ii').click()" ondragover="event.preventDefault()" ondrop="event.preventDefault();handleImgs(event.dataTransfer.files)">
+      <input id="ii" type="file" accept="image/*" multiple hidden onchange="handleImgs(this.files)">
+      <div style="font-size:36px;margin-bottom:8px">📷</div>
+      <div style="font-size:14px;font-weight:500">Arrastra imágenes o haz clic</div>
+    </div>
+    ${S.images.length?`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">${S.images.map((img,i)=>`<div style="position:relative"><img src="${img.data}" class="img-thumb"><button style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:var(--danger);color:#fff;border:none;font-size:11px;display:flex;align-items:center;justify-content:center" onclick="S.images.splice(${i},1);render()">×</button></div>`).join('')}</div>`:''}
+    <textarea class="text-area" rows="3" placeholder="Contexto clínico (opcional): especie, raza, edad, proyección..." oninput="S.imgCtx=this.value">${esc(S.imgCtx)}</textarea>
+    <button class="pill" style="margin-top:12px;background:linear-gradient(135deg,var(--accent),var(--accentLight));padding:12px 28px;font-size:14px;font-weight:600;${S.loading||!S.images.length?'opacity:.6':''}" onclick="doAnalyzeImg()" ${S.loading||!S.images.length?'disabled':''}>
+      ${S.loading&&!S.imgAnalysis?'⏳ Analizando...':'🔍 Analizar imagen'}</button>
+    ${S.imgAnalysis?`
+      ${resultBox(S.imgAnalysis,"Análisis de imagen")}
+      <h3 style="font-size:15px;font-weight:600;margin:24px 0 12px">Generar informe formal:</h3>
+      <div class="fw" style="margin-bottom:16px">${REPORT_TYPES.map(r=>`<button class="rbtn ${S.imgRptType===r.id?'on':''}" onclick="set({imgRptType:'${r.id}'})">${r.icon} ${r.name}</button>`).join('')}</div>
+      <button class="pill" style="background:var(--accent);padding:12px 28px;font-size:14px;font-weight:600;color:#fff;${S.imgRptLoading||!S.imgRptType?'opacity:.6':''}" onclick="doImgReport()" ${S.imgRptLoading||!S.imgRptType?'disabled':''}>
+        ${S.imgRptLoading?'⏳ Generando...':'📋 Generar informe'}</button>
+      ${S.imgRpt?resultBox(S.imgRpt,"Informe generado"):''}
+    `:''}`;
+}
+async function handleImgs(files){for(const f of Array.from(files)){const d=await readURL(f);S.images.push({name:f.name,data:d,type:f.type})}render()}
+async function doAnalyzeImg(){
+  if(!S.images.length)return; set({loading:true,imgAnalysis:""});
+  const content=[];
+  S.images.forEach(img=>{content.push({type:"image",media_type:img.type||"image/jpeg",data:img.data.split(",")[1]})});
+  content.push({type:"text",text:S.imgCtx?"Contexto clínico: "+S.imgCtx+"\nAnaliza las imágenes.":"Analiza esta imagen veterinaria."});
+  try{const r=await generate("image_analysis",content);set({imgAnalysis:r.text,loading:false});refreshStatus()}
+  catch(e){set({imgAnalysis:"❌ "+e.message,loading:false})}
+}
+async function doImgReport(){
+  if(!S.imgAnalysis||!S.imgRptType)return; set({imgRptLoading:true,imgRpt:""});
+  try{const r=await generate(S.imgRptType,"Contexto: "+(S.imgCtx||"No proporcionado")+"\n\nAnálisis de imagen:\n"+S.imgAnalysis);set({imgRpt:r.text,imgRptLoading:false});refreshStatus()}
+  catch(e){set({imgRpt:"❌ "+e.message,imgRptLoading:false})}
+}
+
+// ── HISTORY ──
+function renderHistory(){
+  return `
+    <h2 style="font-size:22px;font-weight:700">📂 Analizar Historial</h2>
+    <p style="color:var(--textMuted);margin:6px 0 24px;font-size:14px">Documentación completa para análisis integral</p>
+    <div class="drop-zone" style="margin-bottom:16px" onclick="document.getElementById('hi').click()" ondragover="event.preventDefault()" ondrop="event.preventDefault();handleHFiles(event.dataTransfer.files)">
+      <input id="hi" type="file" multiple hidden onchange="handleHFiles(this.files)">
+      <div style="font-size:32px;margin-bottom:8px">📁</div>
+      <div style="font-size:14px;font-weight:500">Sube archivos del historial</div>
+    </div>
+    ${S.hFiles.length?`<div class="fw" style="margin-bottom:16px">${S.hFiles.map((f,i)=>`<span style="background:var(--accentBg);border:1px solid rgba(13,148,136,.2);border-radius:8px;padding:6px 12px;font-size:13px;display:inline-flex;align-items:center;gap:8px">${f.type==='image'?'🖼':'📄'} ${esc(f.name)} <button style="background:none;border:none;color:var(--textMuted);cursor:pointer" onclick="S.hFiles.splice(${i},1);render()">×</button></span>`).join('')}</div>`:''}
+    <textarea class="text-area" rows="8" placeholder="Pega datos del historial, analíticas, notas..." oninput="S.hText=this.value">${esc(S.hText)}</textarea>
+    <h3 style="font-size:15px;font-weight:600;margin:20px 0 12px">¿Para quién es el informe?</h3>
+    <div class="fw" style="margin-bottom:16px">${AUDIENCE_TYPES.map(a=>`<button class="rbtn ${S.hAud===a.id?'on':''}" onclick="set({hAud:'${a.id}'})">${a.label}</button>`).join('')}</div>
+    <button class="pill" style="background:linear-gradient(135deg,var(--accent),var(--accentLight));padding:12px 28px;font-size:14px;font-weight:600;color:#fff;${S.loading?'opacity:.6':''}" onclick="doHistory()" ${S.loading?'disabled':''}>
+      ${S.loading?'⏳ Analizando...':'🧠 Analizar y generar informe'}</button>
+    ${S.hResult?resultBox(S.hResult):''}`;
+}
+async function handleHFiles(files){for(const f of Array.from(files)){if(f.type.startsWith("image/")){const d=await readURL(f);S.hFiles.push({name:f.name,type:"image",data:d,mime:f.type})}else{const d=await readText(f);S.hFiles.push({name:f.name,type:"text",data:d})}}render()}
+async function doHistory(){
+  if((!S.hText.trim()&&!S.hFiles.length)||!S.hAud){toast("Introduce datos y selecciona tipo","error");return}
+  set({loading:true,hResult:""});
+  const content=[];
+  S.hFiles.forEach(f=>{if(f.type==="image"){content.push({type:"image",media_type:f.mime,data:f.data.split(",")[1]});content.push({type:"text",text:"[Archivo: "+f.name+"]"})}else{content.push({type:"text",text:"["+f.name+"]:\n"+f.data})}});
+  const prompts={insurance:"Informe para aseguradora.",referral:"Informe de remisión.",second_opinion:"Segunda opinión clínica.",summary:"Resumen clínico."};
+  if(S.hText)content.push({type:"text",text:"Datos del historial:\n"+S.hText});
+  content.push({type:"text",text:"\nInstrucción: "+prompts[S.hAud]});
+  try{const r=await generate(S.hAud==="summary"?"summary":S.hAud,content);set({hResult:r.text,loading:false});refreshStatus()}
+  catch(e){set({hResult:"❌ "+e.message,loading:false})}
+}
+
+// ── REPORT ──
+function renderReport(){
+  return `
+    <h2 style="font-size:22px;font-weight:700">📝 Redactar Informe</h2>
+    <p style="color:var(--textMuted);margin:6px 0 24px;font-size:14px">Notas rápidas → informe profesional</p>
+    <textarea class="text-area" rows="10" placeholder="Escribe notas clínicas rápidas..." oninput="S.rText=this.value">${esc(S.rText)}</textarea>
+    <h3 style="font-size:15px;font-weight:600;margin:20px 0 12px">Tipo de informe:</h3>
+    <div class="fw" style="margin-bottom:16px">${REPORT_TYPES.map(r=>`<button class="rbtn ${S.rType===r.id?'on':''}" onclick="set({rType:'${r.id}'})">${r.icon} ${r.name}</button>`).join('')}</div>
+    <button class="pill" style="background:linear-gradient(135deg,var(--accent),var(--accentLight));padding:12px 28px;font-size:14px;font-weight:600;color:#fff;${S.loading||!S.rType||!S.rText.trim()?'opacity:.6':''}" onclick="doReport()" ${S.loading||!S.rType||!S.rText.trim()?'disabled':''}>
+      ${S.loading?'⏳ Generando...':'✨ Generar informe profesional'}</button>
+    ${S.rResult?resultBox(S.rResult):''}`;
+}
+async function doReport(){
+  if(!S.rText.trim()||!S.rType)return;set({loading:true,rResult:""});
+  try{const r=await generate(S.rType,"Genera informe profesional a partir de estas notas:\n\n"+S.rText);set({rResult:r.text,loading:false});refreshStatus()}
+  catch(e){set({rResult:"❌ "+e.message,loading:false})}
+}
+
+// ── SHARED ──
+function resultBox(content,title="Informe generado"){
+  const isErr=content.startsWith("❌");
+  return `<div class="card" style="margin-top:24px;${isErr?'border-color:var(--danger)':''}">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-bottom:1px solid var(--border)">
+      <span style="color:${isErr?'var(--danger)':'var(--accent)'};font-size:14px;font-weight:600">${isErr?'❌ Error':'✅ '+title}</span>
+      ${!isErr?`<button class="pill" style="background:var(--accentBg);border:1px solid rgba(13,148,136,.2);color:var(--accent);padding:6px 14px;font-size:12px;font-weight:600" onclick="copyR(this)">📋 Copiar</button>`:''}
+    </div>
+    <div style="padding:20px;font-size:14px;line-height:1.7;white-space:pre-wrap;max-height:500px;overflow-y:auto;${isErr?'color:var(--danger)':''}">${esc(content)}</div>
+  </div>`;
+}
+function copyR(btn){const t=btn.closest('.card').querySelector('div:last-child').textContent;navigator.clipboard?.writeText(t).then(()=>{btn.textContent="✓ Copiado";setTimeout(()=>{btn.textContent="📋 Copiar"},2000)})}
+async function refreshStatus(){try{const d=await api("GET","/api/clinic/status");S.clinic=d}catch(e){}}
+function esc(s){if(!s)return"";return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}
+
+// ── START ──
+render();
+if(S.page==="loading")initApp();
+</script>
+</body>
+</html>
